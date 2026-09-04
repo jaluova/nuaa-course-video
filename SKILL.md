@@ -17,8 +17,12 @@ description: >-
 
 1. **解析目标**——用户给课程链接时取其 `id=NNN` 作为 `teclId`(课堂 id);只给日期时间
    (如 "09-03 8:55") 时,登录后可先列出课表再按 `courBeginTime` 匹配。
-2. **扫码登录**——`python3 scripts/qr_login.py <页面URL>`。会启动独立无头 Chrome,
-   生成二维码并在 Preview 弹出,**请用户用手机(南航App/微信)扫码并在手机上确认**。
+2. **扫码登录**——`python3 scripts/qr_login.py --no-open <页面URL>`。会启动独立无头
+   Chrome 并生成二维码到 `/tmp/nuaa-qr.png`。把二维码**直接展示在对话里**:
+   先把图片复制进当前工作区(如 `cp /tmp/nuaa-qr.png <工作区>/nuaa-扫码登录.png`),
+   再在回复中用 Markdown 图片语法引用(如 `![扫码登录二维码](<工作区>/nuaa-扫码登录.png)`),
+   **请用户用手机(南航App/微信)扫码并在手机上确认**;不要依赖 Preview 弹窗。
+   二维码约 5 分钟过期,过期脚本会自动刷新,此时要把新图重新展示给用户。
    登录成功后写入 `/tmp/nuaa-skill-state.json`(jwt + tenant),随后自动关闭无头 Chrome。
 3. **列出录像**——`python3 scripts/nuaa_api.py list <teclId>` → 显示该课堂所有节课
    (id / 起止时间 / 教师)。一个课堂通常含多节课,注意用用户说的时间匹配。
@@ -34,8 +38,9 @@ description: >-
    与 `/tmp/nuaa-qr*.png`。向用户汇报文件路径与校验结果。
 
 依赖: 系统的 python3 + venv(pip 可联网,首次运行自动装 websockets/pycryptodome
-到 `~/.cache/nuaa-course-video/venv`)、curl、ffprobe(ffmpeg)、macOS Preview
-(展示二维码;非 macOS 环境会在终端打印二维码图片路径)。
+到 `~/.cache/nuaa-course-video/venv`)、curl、ffprobe(ffmpeg)。二维码在 ZCode
+对话内直接展示(任意系统);独立 CLI 模式下 macOS 经 Preview 弹出,其他系统
+用 `--no-open` 拿图片路径自行展示。
 
 ## 已确认的关键事实(2026-09 实测,勿随意绕过)
 

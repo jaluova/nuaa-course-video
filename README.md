@@ -25,13 +25,15 @@ NUAA（南京航空航天大学）「飞天云课堂」课程录像与 AI 字幕
 
 | 依赖 | 用途 | 必需 |
 |---|---|---|
-| macOS | 二维码经 Preview 弹出展示 | 是* |
 | Google Chrome | 无头模式跑登录流程 | 是 |
 | python3 (3.9+) | 主逻辑；首次运行自动创建 venv 并安装 `websockets`/`pycryptodome` | 是 |
 | curl | 接口调用与分段下载 | 是 |
 | ffmpeg/ffprobe | 下载后校验时长 | 可选 |
+| macOS + Preview | 仅独立 CLI 模式：二维码经 Preview 弹出 | 否* |
 
-\* 其他平台可用 `--no-open` 模式：脚本只输出二维码图片路径，自行展示即可。
+\* 在 ZCode 中使用时，二维码以图片形式**直接内嵌到对话里**（任意系统都可以）；
+只有把脚本当独立 CLI 用时，macOS 才会经 Preview 弹码，其他系统用 `--no-open`
+输出二维码图片路径自行展示。
 
 ## 安装（作为 ZCode 技能）
 
