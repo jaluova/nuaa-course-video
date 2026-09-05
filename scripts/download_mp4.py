@@ -50,6 +50,16 @@ def main():
     if "--segments" in sys.argv:
         nseg = int(sys.argv[sys.argv.index("--segments") + 1])
 
+    # out_path 来自 argv: 拒绝上跳目录, 限制在用户主目录或当前目录内
+    if ".." in out_path:
+        raise SystemExit(f"拒绝包含 .. 的输出路径: {out_path}")
+    from pathlib import Path
+    out_p = Path(os.path.expanduser(out_path)).resolve()
+    out_allowed = [Path.home().resolve(), Path.cwd().resolve()]
+    if not any(out_p == d or out_p.is_relative_to(d) for d in out_allowed):
+        raise SystemExit(f"输出路径必须在用户主目录或当前目录之下: {out_path}")
+    out_path = str(out_p)
+
     total = head_size(url)
     print(f"Content-Length: {total} bytes (~{total/1048576:.0f} MB)")
 

@@ -50,6 +50,9 @@ git clone https://github.com/jaluova/nuaa-course-video.git ~/.agents/skills/nuaa
 ## 命令行直接使用（不需要 ZCode）
 
 ```bash
+# 0. 只知道课名时: 列出本学期全部课程, 找到 teclId(支持关键词过滤)
+python3 scripts/nuaa_api.py courses 软件工程
+
 # 1. 扫码登录（生成二维码并等待手机确认；登录态写入 /tmp/nuaa-skill-state.json）
 python3 scripts/qr_login.py --no-open \
   "https://ft.nuaa.edu.cn/jy-application-vod-he-ui/#/video-detail?id=<teclId>"
@@ -106,6 +109,7 @@ python3 scripts/nuaa_api.py subtitle <courseId> ~/Downloads/课程名.srt
 | `GET /authserver/qrCode/getCode?uuid=` | 二维码图片 | 无 |
 | `GET /authserver/qrCode/getStatus.htl?uuid=` | 扫码状态轮询 | 无 |
 | `POST /authserver/login?display=qrLogin&service=…` | 页面表单提交换票据 | 页面会话 |
+| `GET /v1/group_subject_vod_list?page…` | 本学期课程列表（找 teclId） | `jwt-token` + `tenantid` |
 | `GET /v1/subject_vod_list?teclIds=…` | 课次列表 | `jwt-token` + `tenantid` |
 | `GET /v1/course_vod_urls?courseId=…` | 播放直链 | 同上 |
 | `GET /v1/course_vod_subtitle?courseId=…` | AI 字幕 | 同上 |
@@ -130,6 +134,13 @@ nuaa-course-video/          ← 仓库根 = 技能根
 - AI 字幕由平台侧按课生成，部分课次可能缺失或延迟若干天。
 - 播放地址的 `auth_key` 有时效；过期重取即可，不支持离线缓存地址。
 - 学校接口或页面改版可能导致流程失效（脚本内的自检会尽量给出明确报错）。
+
+## 安全与信任说明
+
+- 全流程**不接触账号密码**：登录走学校统一身份认证的官方二维码接口，确认动作在你手机上完成。
+- 脚本持有的唯一凭据是飞天云课堂单个应用的 `jwt-token` 会话：仅能访问本平台的课表/播放/字幕接口，不是统一身份认证密码，动不了教务、邮箱等其他系统；写入本机临时文件时权限为 `0600`（仅文件主可读），流程结束即删除，服务端也会在数小时后过期。
+- 凭据只发往 `ft.nuaa.edu.cn`（https），脚本不与任何第三方服务器通信。
+- 请只从本仓库获取脚本。**恶意改版的二维码工具可以把你的扫码确认会话转发给攻击者**（扫码钓鱼）——如果得到的二维码来源不明，不要扫。
 
 ## 致谢
 

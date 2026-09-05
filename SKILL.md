@@ -15,8 +15,10 @@ description: >-
 
 ## 流程概览
 
-1. **解析目标**——用户给课程链接时取其 `id=NNN` 作为 `teclId`(课堂 id);只给日期时间
-   (如 "09-03 8:55") 时,登录后可先列出课表再按 `courBeginTime` 匹配。
+1. **解析目标**——用户给课程链接时取其 `id=NNN` 作为 `teclId`(课堂 id);只给课名
+   (如 "软工") 时先跑 `python3 scripts/nuaa_api.py courses 关键词` 找到 teclId
+   (输出含课程名/教师/班级);只给日期时间(如 "09-03 8:55") 时,登录后列出课表
+   再按 `courBeginTime` 匹配。
 2. **扫码登录**——`python3 scripts/qr_login.py --no-open <页面URL>`。会启动独立无头
    Chrome 并生成二维码到 `/tmp/nuaa-qr.png`。把二维码**直接展示在对话里**:
    先把图片复制进当前工作区(如 `cp /tmp/nuaa-qr.png <工作区>/nuaa-扫码登录.png`),
@@ -56,6 +58,10 @@ description: >-
   若站点改密钥会检测失败,不要硬编码绕过。
 - 扫码确认后**必须刷新登录页再提交**:登录页开太久后 CAS execution 会话过期,
   直接提交会被弹回登录页。qr_login.py 已内置(确认→reload→立即提交,失败自动重试一次)。
+- 课程发现接口是 `/v1/group_subject_vod_list?page.pageIndex=1&page.pageSize=1000`
+  (返回本学期全部课程, 含 teclId/subjName/teacNames/teclName)。
+  `/v1/myself/curriculum` 是教师侧接口,学生账号调用返回 500;
+  `/v1/apps` 是应用列表,不是课程。都不要用。
 
 ## 排障
 

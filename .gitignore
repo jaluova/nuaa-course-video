@@ -1,0 +1,15 @@
+# local security-hook state (mimosa)
+.mimosa/
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# runtime artifacts
+/tmp/
+*.srt
+*.mp4

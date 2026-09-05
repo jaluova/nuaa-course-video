@@ -2,6 +2,7 @@
 """飞天云课堂 API 封装 (使用 qr_login.py 产出的 state 文件里的 jwt)。
 
 用法:
+  python3 nuaa_api.py courses [关键词]         # 列出本学期全部课程(找 teclId 用), 支持子串过滤
   python3 nuaa_api.py list <teclId>            # 列出该课堂下的全部录像(id/时间/教师)
   python3 nuaa_api.py url <courseId>           # 取某节课的 mp4 播放地址(带 auth_key)
   python3 nuaa_api.py refresh <courseId>       # 同上(播放地址过期时重新签发)
@@ -9,7 +10,8 @@
 
 state 文件(默认 /tmp/nuaa-skill-state.json): {"jwt": ..., "tenant": ...}
 """
-import json, os, subprocess, sys, urllib.request
+import ipaddress, json, os, re, socket, subprocess, sys, urllib.parse, urllib.request
+from pathlib import Path
 
 BASE = "https://ft.nuaa.edu.cn/jy-application-vod-he"
 STATE_DEFAULT = "/tmp/nuaa-skill-state.json"
@@ -37,21 +39,95 @@ from nuaa_aes import encrypt_quoted  # noqa: E402
 
 
 def load_state(state_path):
-    with open(state_path) as f:
+    """--state 来自 argv: 拒绝上跳目录, 限制在 /tmp、用户主目录或当前目录内。"""
+    if ".." in state_path:
+        raise SystemExit(f"拒绝包含 .. 的 state 路径: {state_path}")
+    p = Path(os.path.expanduser(state_path)).resolve()
+    allowed = [Path("/tmp"), Path("/private/tmp"), Path.home(), Path.cwd()]
+    if not any(p == d or p.is_relative_to(d) for d in allowed):
+        raise SystemExit(f"state 路径必须在 /tmp、用户主目录或当前目录之下: {state_path}")
+    with open(p) as f:
         return json.load(f)
 
 
+def _check_id(value, kind="id"):
+    """课程/课次 id 都是纯数字; argv 注入在这里统一拦下。"""
+    if not re.fullmatch(r"[0-9]{4,15}", str(value)):
+        raise SystemExit(f"{kind} 必须是数字 id: {value}")
+    return value
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """不跟随重定向: 重定向目标可能绕过协议/主机校验。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+_ALLOWED_HOST = "ft.nuaa.edu.cn"
+
+
+def _guard_url(url):
+    """SSRF 防护: 仅 https + 域名白名单, 解析结果阻断非公网地址。"""
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != "https" or parts.hostname != _ALLOWED_HOST:
+        raise ValueError(f"unexpected api url: {url}")
+    for info in socket.getaddrinfo(parts.hostname, 443, proto=socket.IPPROTO_TCP):
+        ip = ipaddress.ip_address(info[4][0])
+        if not ip.is_global:  # 阻断私网/环回/链路本地/保留地址
+            raise ValueError(f"blocked non-public resolved address: {ip}")
+
+
 def call(path_qs, state):
-    req = urllib.request.Request(BASE + path_qs, headers={
+    if not path_qs.startswith("/v1/"):  # 只允许本平台 API 路径前缀
+        raise ValueError(f"unexpected api path: {path_qs[:60]}")
+    url = BASE + path_qs  # BASE 是常量 https 主机
+    _guard_url(url)
+    req = urllib.request.Request(url, headers={
         "jwt-token": state["jwt"],
         "tenantid": state.get("tenant", "RBAC"),
         "User-Agent": UA,
     })
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with _OPENER.open(req, timeout=30) as r:
         return json.loads(r.read().decode())
 
 
+def cmd_courses(keyword, state):
+    """列出本学期的全部课程(点播分组列表), 只知道课名时用它找 teclId。
+
+    课程发现走 /v1/group_subject_vod_list(学生视角"我的课程"分组)。
+    注意 /v1/myself/curriculum 是教师侧接口, 学生账号调用返回 500, 别用。"""
+    data = call("/v1/group_subject_vod_list?page.pageIndex=1&page.pageSize=1000", state)
+    recs = (data.get("data") or {}).get("records") or []
+    if not recs:
+        print("没有课程记录(登录态可能已失效, 重新扫码)")
+        sys.exit(1)
+    if keyword:
+        kw = keyword.lower()
+        recs = [r for r in recs if kw in (r.get("subjName") or "").lower()
+                or kw in (r.get("teclName") or "").lower()]
+        if not recs:
+            print(f"没有匹配「{keyword}」的课程; 不带关键词运行 courses 可看本学期全部课程")
+            sys.exit(1)
+    for r in recs:
+        print(f"teclId={r['teclId']} | {r.get('subjName')} | "
+              f"{', '.join(r.get('teacNames') or [])} | 班级 {r.get('teclName')} | "
+              f"录像 {r.get('courTimes')} 次")
+
+
+# courses 子命令前置分发(无路径数据流; list/url/subtitle 仍走文件尾的主分发)
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "courses":
+    _sp = STATE_DEFAULT
+    if "--state" in sys.argv:
+        _sp = sys.argv[sys.argv.index("--state") + 1]
+    _kw = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith("--") else ""
+    cmd_courses(_kw, load_state(_sp))
+    sys.exit(0)
+
+
 def cmd_list(tecl_id, state):
+    tecl_id = _check_id(tecl_id, "teclId")
     qs = (f"/v1/subject_vod_list?page.pageIndex=1&page.pageSize=1000"
           f"&teclIds={tecl_id}%20%20%20%20%20%20"
           f"&page.orders%5B0%5D.asc=true&page.orders%5B0%5D.field=courBeginTime")
@@ -63,6 +139,7 @@ def cmd_list(tecl_id, state):
 
 
 def cmd_url(course_id, state):
+    course_id = _check_id(course_id, "courseId")
     qs = f"/v1/course_vod_urls?courseId={encrypt_quoted(str(course_id))}"
     data = call(qs, state)
     info = data.get("data") or {}
@@ -83,10 +160,29 @@ def _ms_to_srt_ts(ms):
     return f"{h:02d}:{m:02d}:{s:02d},{ms2:03d}"
 
 
+def _safe_out_path(course_id, out_path):
+    """规范化并校验输出路径(本机 CLI, 但限制在用户目录内)。
+
+    - 默认文件名剥离路径分隔符(course_id 来自 argv);
+    - 原始输入显式拒绝上跳目录片段;
+    - 最终路径必须位于用户主目录或当前工作目录之下。"""
+    cid = re.sub(r"[^0-9A-Za-z_-]", "_", str(course_id))
+    if not out_path:
+        return os.path.abspath(f"{cid}.srt")
+    if ".." in out_path:
+        raise SystemExit(f"拒绝包含 .. 的输出路径: {out_path}")
+    allowed = [os.path.expanduser("~"), os.getcwd()]
+    p = os.path.abspath(os.path.expanduser(out_path))
+    if not any(p == d or p.startswith(d.rstrip(os.sep) + os.sep) for d in allowed):
+        raise SystemExit(f"输出路径必须在用户主目录或当前目录之下: {out_path}")
+    return p
+
+
 def cmd_subtitle(course_id, state, out_path=None):
     """拉取 AI 字幕(条目: bg/ed 毫秒时间轴 + res 文本)并转成 SRT。
 
     平台未生成字幕时接口返回 data:[](空), 此时打印提示并以退出码 1 结束。"""
+    course_id = _check_id(course_id, "courseId")
     data = call(f"/v1/course_vod_subtitle?courseId={course_id}", state)
     entries = data.get("data") or []
     if not entries:
@@ -94,8 +190,7 @@ def cmd_subtitle(course_id, state, out_path=None):
               f"可过几天重试")
         sys.exit(1)
     entries.sort(key=lambda e: e.get("bg", 0))
-    if not out_path:
-        out_path = f"{course_id}.srt"
+    out_path = _safe_out_path(course_id, out_path)
     with open(out_path, "w", encoding="utf-8-sig") as f:
         for i, e in enumerate(entries, 1):
             f.write(f"{i}\n{_ms_to_srt_ts(e['bg'])} --> {_ms_to_srt_ts(e['ed'])}\n"

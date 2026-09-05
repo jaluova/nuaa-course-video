@@ -18,6 +18,7 @@
                             与 jy-application-vod-he-ui_STORAGE_KEY_TENANT_ID
 """
 import asyncio, json, os, signal, socket, subprocess, sys, tempfile, time, urllib.request
+from pathlib import Path
 
 STATE_DEFAULT = "/tmp/nuaa-skill-state.json"
 QR_PNG = "/tmp/nuaa-qr.png"
@@ -117,7 +118,11 @@ async def qr_loop(ws):
         token = curl_get(f"/authserver/qrCode/getToken?ts={int(time.time()*1000)}")
         if not token or token.startswith("{"):
             raise RuntimeError("getToken failed: " + str(token)[:100])
-        with open(QR_PNG, "wb") as f:
+        qr_png = Path(QR_PNG).resolve()  # 常量路径, 仍显式限制在系统临时目录内
+        if not any(qr_png == d or qr_png.is_relative_to(d)
+                   for d in (Path("/tmp").resolve(), Path("/private/tmp"))):
+            raise RuntimeError(f"unexpected qr path: {qr_png}")
+        with open(qr_png, "wb") as f:
             subprocess.run(["curl", "-s", "--max-time", "15",
                             f"https://authserver.nuaa.edu.cn/authserver/qrCode/getCode?uuid={token}"],
                            stdout=f)
@@ -263,9 +268,17 @@ async def main():
         data = json.loads(tokens)
         state = {"jwt": data["jwt"], "tenant": data["tenant"], "page_url": href,
                  "created": time.time()}
-        with open(state_path, "w") as f:
+        sp = Path(os.path.expanduser(state_path)).resolve()  # --state 来自 argv, 限制写入范围
+        sp_allowed = [Path("/tmp").resolve(), Path("/private/tmp"),
+                      Path.home().resolve(), Path.cwd().resolve()]
+        if ".." in state_path or not any(
+                sp == d or sp.is_relative_to(d) for d in sp_allowed):
+            raise RuntimeError(f"refusing state path: {state_path}")
+        # state 里是登录 jwt, 限制为仅文件主可读写(0600), 防同机其他用户读取
+        fd = os.open(sp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
             json.dump(state, f)
-        print("state saved to", state_path, "| jwt len", len(data["jwt"]),
+        print("state saved to", sp, "| jwt len", len(data["jwt"]),
               "| tenant", data["tenant"])
         await ws.close()
     finally:
