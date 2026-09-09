@@ -3,16 +3,17 @@
 
 启动一个全新的无头 Chrome(独立临时配置,与用户的 Chrome 互不影响),
 打开目标页面 -> 被重定向到统一身份认证登录页 -> 通过后端接口生成二维码
-(显示在 Preview 中, macOS) -> 轮询扫码状态 -> 确认后页面内提交表单完成登录
--> 读出 sessionStorage 中的 jwt/tenant 写入 state 文件。
+(保存到 /tmp/nuaa-qr.png, 默认不弹窗) -> 轮询扫码状态 -> 确认后页面内提交表单
+完成登录 -> 读出 sessionStorage 中的 jwt/tenant 写入 state 文件。
 
 用法:
-  python3 qr_login.py <video_page_url> [--state <json_path>] [--keep]
+  python3 qr_login.py <video_page_url> [--state <json_path>] [--keep] [--open]
 
 要点(踩坑记录):
 - 页面前端代码的 getQrCode() 可能因 QR_LOGIN_ENABLED 关闭而不工作,
   必须直接调后端接口: /authserver/qrCode/getToken -> getCode -> getStatus.htl
 - 二维码必须校验 PNG 魔数再展示, 否则可能把 HTML 占位页当二维码给用户
+- 二维码默认不弹窗(只打印路径, 供对话内展示); 独立终端需要弹出时加 --open
 - 登录提交必须在浏览器页面会话内完成(form.submit()), 用 curl 单独 POST 会失败
 - 登录成功后 sessionStorage 键: jy-application-vod-he-ui_STORAGE_KEY_JWT_TOKEN
                             与 jy-application-vod-he-ui_STORAGE_KEY_TENANT_ID
@@ -63,13 +64,14 @@ def is_png(path):
 
 
 def show_qr(path):
-    """默认用 macOS Preview 弹出图片; --no-open 时只打印路径(供对话内展示)。"""
-    if "--no-open" in sys.argv:
-        print("QR_PNG_PATH=" + path)
-    elif sys.platform == "darwin":
+    """默认只打印二维码路径(供对话内/ZCode 内联展示), 不弹任何窗口;
+
+    显式传 --open 时, macOS 才经 Preview 弹出(独立终端场景可选)。
+    历史参数 --no-open 仍接受, 行为与默认一致, 已有调用不受影响。"""
+    if "--open" in sys.argv and sys.platform == "darwin":
         subprocess.run(["open", path])
     else:
-        print("QR saved at", path)
+        print("QR_PNG_PATH=" + path)
 
 
 async def cdp_eval(ws, n, expr):

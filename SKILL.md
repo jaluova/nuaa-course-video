@@ -6,7 +6,7 @@ description: >-
   download or save a course video/lecture recording from this platform — e.g.
   "下载 09-03 8:55 的课", "怎么下载这节课", or any ft.nuaa.edu.cn/jy-application-vod-he-ui/#/video-detail?id=... link.
   Interactive: requires the user to scan a QR code once per run (统一身份认证扫码登录,
-  Preview 会弹出二维码). Downloads the original MP4 (1080p H.264) from vodserver.nuaa.edu.cn.
+  二维码默认不弹窗, 在对话内展示). Downloads the original MP4 (1080p H.264) from vodserver.nuaa.edu.cn.
 ---
 
 # NUAA 飞天云课堂课程视频下载
@@ -19,7 +19,8 @@ description: >-
    (如 "软工") 时先跑 `python3 scripts/nuaa_api.py courses 关键词` 找到 teclId
    (输出含课程名/教师/班级);只给日期时间(如 "09-03 8:55") 时,登录后列出课表
    再按 `courBeginTime` 匹配。
-2. **扫码登录**——`python3 scripts/qr_login.py --no-open <页面URL>`。会启动独立无头
+2. **扫码登录**——`python3 scripts/qr_login.py <页面URL>`(默认不弹窗,独立终端需要弹出可加
+   `--open`)。会启动独立无头
    Chrome 并生成二维码到 `/tmp/nuaa-qr.png`。把二维码**直接展示在对话里**:
    先把图片复制进当前工作区(如 `cp /tmp/nuaa-qr.png <工作区>/nuaa-扫码登录.png`),
    再在回复中用 Markdown 图片语法引用(如 `![扫码登录二维码](<工作区>/nuaa-扫码登录.png)`),
@@ -41,8 +42,8 @@ description: >-
 
 依赖: 系统的 python3 + venv(pip 可联网,首次运行自动装 websockets/pycryptodome
 到 `~/.cache/nuaa-course-video/venv`)、curl、ffprobe(ffmpeg)。二维码在 ZCode
-对话内直接展示(任意系统);独立 CLI 模式下 macOS 经 Preview 弹出,其他系统
-用 `--no-open` 拿图片路径自行展示。
+对话内直接展示(任意系统);脚本默认不弹窗,独立 CLI 场景如确需弹出可显式加
+`--open`(仅 macOS 有效)。
 
 ## 已确认的关键事实(2026-09 实测,勿随意绕过)
 
@@ -78,6 +79,6 @@ description: >-
 ## 备注
 
 - 每轮都要扫码(平台是会话 cookie,无头浏览器每次全新会话),这是设计使然,
-  提前告诉用户会弹二维码。
+  提前告诉用户二维码会展示在对话里, 需要用手机扫码。
 - 敏感信息(jwt/token)只存在于 `/tmp/nuaa-skill-state.json`,用后必删。
 - 用户的无头流程与用户正在使用的 Chrome 完全隔离,互不影响。

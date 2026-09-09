@@ -29,11 +29,11 @@ NUAA（南京航空航天大学）「飞天云课堂」课程录像与 AI 字幕
 | python3 (3.9+) | 主逻辑；首次运行自动创建 venv 并安装 `websockets`/`pycryptodome` | 是 |
 | curl | 接口调用与分段下载 | 是 |
 | ffmpeg/ffprobe | 下载后校验时长 | 可选 |
-| macOS + Preview | 仅独立 CLI 模式：二维码经 Preview 弹出 | 否* |
+| macOS + Preview | 仅显式加 `--open` 时：二维码经 Preview 弹出 | 否* |
 
 \* 在 ZCode 中使用时，二维码以图片形式**直接内嵌到对话里**（任意系统都可以）；
-只有把脚本当独立 CLI 用时，macOS 才会经 Preview 弹码，其他系统用 `--no-open`
-输出二维码图片路径自行展示。
+脚本**默认不弹任何窗口**（只输出二维码图片路径），仅当显式加 `--open` 时
+macOS 才会经 Preview 弹码。
 
 ## 安装（作为 ZCode 技能）
 
@@ -53,8 +53,8 @@ git clone https://github.com/jaluova/nuaa-course-video.git ~/.agents/skills/nuaa
 # 0. 只知道课名时: 列出本学期全部课程, 找到 teclId(支持关键词过滤)
 python3 scripts/nuaa_api.py courses 软件工程
 
-# 1. 扫码登录（生成二维码并等待手机确认；登录态写入 /tmp/nuaa-skill-state.json）
-python3 scripts/qr_login.py --no-open \
+# 1. 扫码登录（生成二维码并等待手机确认；默认不弹窗，只打印图片路径；登录态写入 /tmp/nuaa-skill-state.json）
+python3 scripts/qr_login.py \
   "https://ft.nuaa.edu.cn/jy-application-vod-he-ui/#/video-detail?id=<teclId>"
 
 # 2. 列出该课堂的全部课次录像（teclId = 页面 URL 里的 id 参数）
