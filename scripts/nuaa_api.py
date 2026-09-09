@@ -69,14 +69,18 @@ _ALLOWED_HOST = "ft.nuaa.edu.cn"
 
 
 def _guard_url(url):
-    """SSRF 防护: 仅 https + 域名白名单, 解析结果阻断非公网地址。"""
+    """SSRF 防护: 仅 https + 域名白名单; 环回/链路本地/组播/保留地址一律阻断。
+
+    私网(RFC1918)地址放行: 校内 DNS 会把 ft.nuaa.edu.cn 解析到校园网内网地址,
+    校外解析为公网地址, 两种情况都属正常访问。"""
     parts = urllib.parse.urlsplit(url)
     if parts.scheme != "https" or parts.hostname != _ALLOWED_HOST:
         raise ValueError(f"unexpected api url: {url}")
     for info in socket.getaddrinfo(parts.hostname, 443, proto=socket.IPPROTO_TCP):
         ip = ipaddress.ip_address(info[4][0])
-        if not ip.is_global:  # 阻断私网/环回/链路本地/保留地址
-            raise ValueError(f"blocked non-public resolved address: {ip}")
+        if (ip.is_loopback or ip.is_link_local or ip.is_multicast
+                or ip.is_reserved or ip.is_unspecified):
+            raise ValueError(f"blocked unsafe resolved address: {ip}")
 
 
 def call(path_qs, state):
