@@ -2,11 +2,12 @@
 """并行分段下载直链 mp4 并合并校验。
 
 用法:
-  python3 download_mp4.py <mp4_url> <out_path> [--segments 4]
+  python3 download_mp4.py <mp4_url> <out_path> [--segments 4] [--rate 1024k]
 
 流程: HEAD 拿 Content-Length -> 按段并行 curl -r -> 校验各段大小 -> cat 合并
 -> ffprobe 打印时长(可选)。播放地址带 auth_key 时效, 尽快下载; 中途 403
 说明地址过期, 先用 nuaa_api.py refresh <courseId> 换新地址再续跑(会跳过已有部分)。
+--rate 传给 curl --limit-rate(如 1024k/2m), 配合 --segments 1 即整条限速。
 """
 import concurrent.futures, os, shutil, subprocess, sys, tempfile, urllib.request
 
@@ -29,11 +30,14 @@ def head_size(url):
     raise RuntimeError("HEAD failed to get Content-Length")
 
 
-def dl_range(url, start, end, tmp, seg_i):
+def dl_range(url, start, end, tmp, seg_i, rate=None):
     out = os.path.join(tmp, f"part_{seg_i}.mp4")
     cmd = ["curl", "-sL", "--max-time", "5400", "--retry", str(MAX_RETRY),
            "-H", f"Referer: {REFERER}", "-H", f"User-Agent: {UA}",
            "-r", f"{start}-{end}", url, "-o", out]
+    if rate:
+        cmd.insert(2, "--limit-rate")
+        cmd.insert(3, rate)
     for _ in range(MAX_RETRY):
         r = subprocess.run(cmd, capture_output=True)
         if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) == end - start + 1:
@@ -49,6 +53,9 @@ def main():
     nseg = 4
     if "--segments" in sys.argv:
         nseg = int(sys.argv[sys.argv.index("--segments") + 1])
+    rate = None
+    if "--rate" in sys.argv:
+        rate = sys.argv[sys.argv.index("--rate") + 1]
 
     # out_path 来自 argv: 拒绝上跳目录, 限制在用户主目录或当前目录内
     if ".." in out_path:
@@ -73,7 +80,7 @@ def main():
         ranges = [(i * seg_size, min((i + 1) * seg_size - 1, total - 1)) for i in range(nseg)]
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=nseg) as ex:
-                futures = [ex.submit(dl_range, url, s, e, tmp, i) for i, (s, e) in enumerate(ranges)]
+                futures = [ex.submit(dl_range, url, s, e, tmp, i, rate) for i, (s, e) in enumerate(ranges)]
                 for f in concurrent.futures.as_completed(futures):
                     f.result()  # 抛错即失败
             parts = sorted(os.listdir(tmp))
