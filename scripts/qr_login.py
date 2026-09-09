@@ -88,6 +88,12 @@ async def wait_for_target(port, timeout=90):
             targets = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list",
                                                         timeout=3).read())
             pages = [t for t in targets if t["type"] == "page"]
+            # 只认 http(s) 页面: 机器上若装过浏览器扩展, 扩展的后台页
+            # (chrome-extension://...) 可能先于目标标签页出现, 附着上去
+            # 就会永远等不到 SSO 跳转。必须按 URL 挑课程标签页。
+            good = [t for t in pages if t["url"].startswith(("http://", "https://"))]
+            if good:
+                return good
             if pages:
                 return [t for t in pages if not t["url"].startswith("chrome://")] or pages
         except Exception:
